@@ -194,6 +194,68 @@ def main() -> None:
         else:
             ok(f"bundle id {bundle!r} is unique across the siblings")
 
+    # 5. The documents name the same triple the plist does.
+    #
+    # Added 2026-09, after two repos were found stating a *sibling's* triple in
+    # CLAUDE.md — SwiftPitchFold and SwiftDrawnQurve both said `aumi/Srpe/Enke`,
+    # copied along with the file that describes them. Checks 1-4 were green the
+    # whole time, because they read identifiers and this was a sentence.
+    #
+    # It is the same failure as the 2741/2773 one in music-suite: code correct,
+    # prose wrong, nothing looking at the prose. The answer both times is to
+    # make the prose checkable rather than to fix it again quietly.
+    #
+    # A foreign code is allowed when the *paragraph* it is in says it is
+    # foreign —
+    # every one of these READMEs names the JUCE build's code in order to say
+    # "not that one", which is the sentence most worth having. The first version
+    # of this check failed on exactly that, which is a fair description of why
+    # a check that cannot express "deliberately different" is not usable. Per
+    # paragraph rather than per line because these documents are hard-wrapped,
+    # so "It is not the JUCE MIDIcurator." and "That one is `aumi Mcur`." are
+    # one sentence on two lines — which the line-based version failed on next.
+    disowned = re.compile(r"\bnot\b|\bJUCE\b|\bcollide|github\.com", re.IGNORECASE)
+    docs = [REPO / "CLAUDE.md", REPO / "README.md"]
+    named_own = []
+    # Every code each document mentions, so a document that states the wrong
+    # triple can be told apart from one that states none.
+    seen: dict[str, set[str]] = {}
+    for doc in docs:
+        if not doc.exists():
+            continue
+        text = doc.read_text(encoding="utf-8", errors="replace")
+        for paragraph in re.split(r"\n\s*\n", text):
+            for found in re.findall(r"aumi[/ `]*([A-Za-z0-9]{4})", paragraph):
+                seen.setdefault(doc.name, set()).add(found)
+                if found == subtype:
+                    named_own.append(doc.name)
+                elif not disowned.search(paragraph):
+                    fail(f"{doc.name} says `aumi {found}` where the plist says "
+                         f"{subtype!r}, and nothing around it says that code "
+                         f"belongs to something else — a document naming a "
+                         f"sibling's triple is how somebody ends up changing "
+                         f"the plist to match it")
+
+    present = [doc.name for doc in docs if doc.exists()]
+    if not present:
+        print("  SKIP  no CLAUDE.md or README.md to check")
+    elif set(named_own) != set(present):
+        for name in sorted(set(present) - set(named_own)):
+            others = sorted(seen.get(name, set()))
+            if others:
+                # The shape the real bug had: the paragraph disowns a code, so
+                # the foreign-code arm above stays quiet, and what is left is a
+                # document that names everybody's triple except its own.
+                fail(f"{name} mentions {', '.join(others)} and never {subtype} — "
+                     f"it is describing a sibling plug-in's identity as though it "
+                     f"were this one's")
+            else:
+                fail(f"{name} never states the triple — the one identifier that "
+                     f"can never change should be written down where somebody "
+                     f"working here will read it")
+    else:
+        ok(f"{', '.join(sorted(set(present)))} state the same code ({subtype})")
+
     print()
     if failures:
         print(f"identity: {failures} FAILURES")

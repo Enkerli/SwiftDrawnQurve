@@ -63,11 +63,16 @@ you narrow or a signature you change breaks it silently from here.
 
 ## Rules that are not negotiable
 
-**The component triple is forever.** `aumi/Srpe/Enke` — not `RPEd`, which is the
-JUCE Rhythm Pattern Explorer's and would collide with the AUv3 that build ships.
-This project was scaffolded by copying ProgGenie's project file, which had been
-copied from MelGen's, so it started life claiming somebody else's code twice
-over. `Scripts/verify.sh identity` exists because that exact class of mistake
+**The component triple is forever.** `aumi/DrwQ/Enke` — not `Dqau`, which is the
+JUCE DrawnQurve's and would collide with the AUv3 that build ships. This project
+was scaffolded by copying a sibling's project file, which had been copied from
+another's, so it started life claiming somebody else's code several removes back.
+
+This paragraph named *Serpe's* triple until 2026-09, having been copied along
+with the file it describes — which is the same failure it warns about, in prose
+instead of in a plist. `Scripts/verify.sh identity` reads the Info.plist and was
+green the whole time, so nothing caught it; the check is on the identifier, not
+on the sentence about it. `Scripts/verify.sh identity` exists because that exact class of mistake
 already shipped once. Never change the triple. The check reads every sibling
 checkout, JUCE `CMakeLists.txt` and Swift `Info.plist` alike.
 

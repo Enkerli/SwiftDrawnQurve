@@ -88,6 +88,19 @@ run_curves() {
 # behaviour depends on the kernel doing something other than scheduling, and a
 # green run that skipped it would be saying "the quantizer works" on the
 # strength of the half that cannot produce a stuck note.
+# The gaps register, from the package that holds it. A plug-in whose gaps are
+# not written down has them anyway, and this repo is exactly the kind that would
+# acquire some quietly: it was built in an afternoon.
+run_gaps() {
+    echo "── gaps (from the foundation package) ─────────────"
+    if [ ! -x "$PACKAGE/Scripts/check-gaps.sh" ]; then
+        echo "FAIL: no gaps check at $PACKAGE/Scripts/check-gaps.sh"
+        status=1
+        return 0
+    fi
+    "$PACKAGE/Scripts/check-gaps.sh" || status=1
+}
+
 run_kernel() {
     echo "── kernel (from the foundation package) ───────────"
     if [ ! -x "$PACKAGE/Scripts/check-kernel.sh" ]; then
@@ -102,7 +115,8 @@ case "$which" in
     identity) run_identity ;;
     curves) run_curves ;;
     kernel) run_kernel ;;
-    all) run_identity; run_curves; run_kernel ;;
+    gaps) run_gaps ;;
+    all) run_identity; run_curves; run_kernel; run_gaps ;;
     *) echo "unknown suite: $which"; exit 2 ;;
 esac
 

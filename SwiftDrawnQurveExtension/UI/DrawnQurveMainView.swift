@@ -31,7 +31,7 @@ struct DrawnQurveMainView: View {
 
     @State private var state = DrawnQurveState()
     /// The stroke in progress, in normalised coordinates. Empty when not drawing.
-    @State private var stroke: [(x: Double, y: Double)] = []
+    @State private var stroke: [GestureCurve.StrokeSample] = []
     @State private var strokeStarted: Date?
     @State private var phases: [Double?] = Array(repeating: nil, count: DrawnQurveState.laneCount)
     @Environment(\.colorScheme) private var colorScheme
@@ -116,37 +116,25 @@ struct DrawnQurveMainView: View {
     private var canvas: some View {
         GeometryReader { geometry in
             let size = geometry.size
-            Canvas { context, canvasSize in
-                draw(in: &context, size: canvasSize)
+            ZStack {
+                Canvas { context, canvasSize in
+                    draw(in: &context, size: canvasSize)
+                }
+                // A platform view, because pressure is not on `DragGesture`. It
+                // reports the stroke live so the line can be seen forming, and
+                // once on lift with the duration — which becomes the loop's
+                // length, since a curve drawn slowly loops slowly. That is the
+                // premise, and it is why the clock starts on first contact
+                // rather than being a setting.
+                PressureCanvas(
+                    onChange: { samples in stroke = samples },
+                    onEnd: { samples, seconds in
+                        state.draw(samples, seconds: seconds)
+                        stroke = []
+                        commit()
+                    })
             }
             .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        if strokeStarted == nil {
-                            strokeStarted = Date()
-                            stroke = []
-                        }
-                        let x = min(1, max(0, value.location.x / max(1, size.width)))
-                        // Screen y grows downward and a curve's 1 is the top,
-                        // so this flips. Getting it wrong draws every gesture
-                        // upside down, which is obvious on screen and silent in
-                        // the MIDI.
-                        let y = 1 - min(1, max(0, value.location.y / max(1, size.height)))
-                        stroke.append((x: x, y: y))
-                    }
-                    .onEnded { _ in
-                        // The gesture's own duration becomes the loop's length:
-                        // a curve drawn slowly loops slowly. That is the whole
-                        // premise, and it is why the clock starts on first
-                        // contact rather than being a setting.
-                        let seconds = max(0.1, -(strokeStarted?.timeIntervalSinceNow ?? -1))
-                        state.draw(stroke, seconds: seconds)
-                        stroke = []
-                        strokeStarted = nil
-                        commit()
-                    }
-            )
         }
         .frame(height: 260)
         .background(RoundedRectangle(cornerRadius: MelGenMetrics.radiusSmall).fill(theme.sunken))
@@ -177,9 +165,29 @@ struct DrawnQurveMainView: View {
             live.move(to: point(stroke[0].x, stroke[0].y))
             for sample in stroke.dropFirst() { live.addLine(to: point(sample.x, sample.y)) }
             context.stroke(live, with: .color(theme.accent), lineWidth: 2.5)
+
+            // And the pressure alongside it, live, so you can see what your
+            // hand is doing while it does it. Dashed, because it is a second
+            // reading of one gesture rather than a second gesture.
+            if stroke.contains(where: { $0.pressure != nil }) {
+                var force = Path()
+                var started = false
+                for sample in stroke {
+                    guard let pressure = sample.pressure else { continue }
+                    let at = point(sample.x, pressure)
+                    if started { force.addLine(to: at) } else { force.move(to: at); started = true }
+                }
+                context.stroke(force, with: .color(theme.accent.opacity(0.5)),
+                               style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+            }
         } else if state.hasCurve(state.selectedLane) {
             context.stroke(path(of: state.lane.curve, in: size),
                            with: .color(theme.accent), lineWidth: 2)
+            if let pressure = state.lane.pressure, state.hasPressure(state.selectedLane) {
+                context.stroke(path(of: pressure, in: size),
+                               with: .color(theme.accent.opacity(state.lane.isPressureEnabled ? 0.5 : 0.2)),
+                               style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+            }
         }
 
         // Playheads, one per running lane, on their own curve.
@@ -284,6 +292,35 @@ struct DrawnQurveMainView: View {
                                    commit()
                                }),
                            theme: theme)
+            }
+
+            if state.hasPressure(state.selectedLane) {
+                Divider().overlay(theme.border)
+                HStack {
+                    Eyebrow(text: "Pressure", theme: theme)
+                    Spacer(minLength: 0)
+                    ToggleChip(title: state.lane.isPressureEnabled ? "Playing" : "Muted",
+                               systemImage: state.lane.isPressureEnabled
+                                   ? "hand.draw" : "hand.draw.badge.xmark",
+                               isOn: Binding(get: { state.lane.isPressureEnabled },
+                                             set: { state.lanes[state.selectedLane]
+                                                        .isPressureEnabled = $0
+                                                    commit() }),
+                               theme: theme)
+                }
+                Text("Recorded from the same stroke as the line, so it lines up with "
+                     + "it exactly. Two passes over the surface never could.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.textMuted)
+                LabelledSlider(title: "Pressure controller", lowLabel: "0", highLabel: "127",
+                               value: Binding(
+                                   get: { Double(state.lane.pressure?.controller ?? 2) / 127 },
+                                   set: { state.lanes[state.selectedLane].pressure?
+                                              .controller = Int(($0 * 127).rounded()) }),
+                               theme: theme,
+                               format: { "CC \(Int(($0 * 127).rounded()))" },
+                               onCommit: { commit() })
+                Divider().overlay(theme.border)
             }
 
             LabelledSlider(title: "Smoothing", lowLabel: "off", highLabel: "soft",

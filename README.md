@@ -82,15 +82,36 @@ git clone https://github.com/Enkerli/enkerli-swift ../enkerli-swift
 
 Then open `SwiftDrawnQurve.xcodeproj` (Xcode 27+, iOS/macOS 26.0+).
 
+## Pencil pressure
+
+A stroke that carries pressure produces **two curves from one gesture**: the line
+you drew, and how hard you pressed while drawing it. They share a time base by
+construction — sample *i* of each is the same instant — which is why they are
+paired rather than drawn separately. A swell that arrives exactly where the line
+peaks is something you play; two passes over the surface could only approximate
+it.
+
+The companion defaults to CC 2 (breath) rather than the line's controller, since
+two curves fighting over one destination is the least useful thing a pair could
+do. It can be muted without muting the line.
+
+Where the input has no pressure — a mouse, a trackpad, a finger on a screen
+without force — there is **no** companion, rather than a flat one pinned at
+zero. "No pressure information" and "pressed evenly" are different facts.
+
+`PressureCanvas.swift` is where this lives, and it is about a hundred lines: a
+platform view, because `DragGesture` has location and nothing else. It also asks
+for coalesced touches, which is the other half of what a bridge costs — the OS
+captures at up to 240 Hz and delivers at 60.
+
 ## What has not been done
 
 - **None of this has been heard on a device**, and for this plug-in that gap is
   wider than usual: the whole product is how a drawn gesture *feels* looping
   back, and nothing about a passing test suite speaks to that.
-- **No Pencil pressure or tilt yet.** The argument above is why the port is
-  worth making, not a description of what it currently reads — the gesture
-  handler takes location only. Pressure as a second curve, drawn in one pass, is
-  the obvious next thing and is the one feature the JUCE build cannot have.
+- **No Pencil tilt or azimuth.** Pressure took one file; tilt would take the
+  same one. The question is whether a third curve per gesture is legible, not
+  whether it is possible.
 - **No X/Y grid quantization**, which the JUCE build has: snap the playhead to
   tick boundaries, or the value to grid levels.
 - **No teach / CC-learn**, no per-lane speed or direction, no host sync for
@@ -100,6 +121,15 @@ Then open `SwiftDrawnQurve.xcodeproj` (Xcode 27+, iOS/macOS 26.0+).
 - **No smoothing on the first value.** Deliberate — easing up from zero opens
   every lane with a swoop nobody drew — but it means a lane's first message
   jumps to wherever the curve starts.
+
+## The full register
+
+The list above is this plug-in's. The shared gaps — host sync, theme choice,
+presets, MIDI panic — and the **strategy** for which of them get built back live
+in [GAPS.md](https://github.com/Enkerli/enkerli-swift/blob/main/GAPS.md) in the
+foundation, along with the things we have decided *not* to build. `Scripts/verify.sh`
+runs its staleness check, so this plug-in cannot quietly acquire gaps nobody
+wrote down.
 
 ## Licence
 

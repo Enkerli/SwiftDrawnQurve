@@ -22,35 +22,19 @@ import Foundation
 import Kernel
 import Shell
 
+// No transport parameters, for now, and the "for now" is the honest part.
+//
+// This tree held `playMelody`, `playbackDirection` and `hostSync` until
+// 2026-09, inherited by being scaffolded from a plug-in that schedules notes.
+// The kernel acts on all three inside `processMelody`; this plug-in never
+// commits a sequence, so a host showed three automatable controls that did
+// nothing. A missing control is a gap; a control that lies is a bug.
+//
+// Run/stop is a UI button today and *should* be a parameter — a looping
+// gesture plug-in a host cannot start is a real limitation, and it is listed in
+// GAPS.md rather than papered over with a control that happens to compile.
 let SwiftDrawnQurveParameterSpecs = ParameterTreeSpec {
     ParameterGroupSpec(identifier: "global", name: "Global") {
-        ParameterSpec(
-            address: .playMelody,
-            identifier: "playMelody",
-            name: "Play",
-            units: .boolean,
-            valueRange: 0...1,
-            defaultValue: 0
-        )
-
-        ParameterSpec(
-            address: .playbackDirection,
-            identifier: "playbackDirection",
-            name: "Playback Direction",
-            units: .indexed,
-            valueRange: 0...2,
-            defaultValue: AUValue(PluginPlaybackDirection.forward.rawValue),
-            valueStrings: ["Forward", "Backward", "Ping-Pong"]
-        )
-
-        ParameterSpec(
-            address: .hostSync,
-            identifier: "hostSync",
-            name: "Sync to Host",
-            units: .boolean,
-            valueRange: 0...1,
-            defaultValue: 0
-        )
     }
 }
 

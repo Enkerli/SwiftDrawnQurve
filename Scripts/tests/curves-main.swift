@@ -14,6 +14,7 @@
 import Foundation
 import Carrier
 import Shell
+import UI
 import Theory
 
 /// Shorthand, because these read better as a list of points than as a list of
@@ -133,6 +134,65 @@ check("while the line takes the new shape",
 pen.lanes[0].isPressureEnabled = false
 check("pressure can be muted without muting the line it came from",
       pen.lanes[0].isEnabled && !pen.lanes[0].isPressureEnabled)
+
+print("\n── qurve quantization ─────────────────────────────")
+
+// The kernel does the arithmetic and its harness checks it. What is checkable
+// here is the part that is this plug-in's: that the grid is per lane, that it
+// survives a save, and that "off" is a value somebody can choose rather than a
+// gap in a range.
+
+var gridded = DrawnQurveState()
+check("a lane starts ungridded, drawn exactly as drawn",
+      gridded.lanes.allSatisfy { $0.quantizeColumns == 0 && $0.quantizeLevels == 0 })
+
+gridded.lanes[1].quantizeColumns = 8
+gridded.lanes[1].quantizeLevels = 4
+check("a grid belongs to one lane, not to the plug-in",
+      gridded.lanes[0].quantizeColumns == 0 && gridded.lanes[1].quantizeColumns == 8,
+      "four lanes can be four different instruments, which is the point of four")
+
+let griddedRound = try! JSONDecoder().decode(
+    DrawnQurveState.self, from: JSONEncoder().encode(gridded))
+check("and it survives a save", griddedRound.lanes[1].quantizeColumns == 8
+      && griddedRound.lanes[1].quantizeLevels == 4)
+
+// A session written by the MVP has no grid keys at all. It must open, and it
+// must open ungridded rather than refusing or defaulting to something.
+let older = """
+{"selectedLane":0,"isRunning":false,"lanes":[{"isEnabled":true,"curve":{}}]}
+"""
+if let old = try? JSONDecoder().decode(DrawnQurveState.self,
+                                       from: Data(older.utf8)) {
+    check("a session from before quantization existed opens ungridded",
+          old.lanes.allSatisfy { $0.quantizeColumns == 0 },
+          "which is what it sounded like when it was saved")
+} else {
+    check("a session from before quantization existed opens ungridded", false,
+          "it did not decode at all")
+}
+
+print("\n── the theme ──────────────────────────────────────")
+
+check("a plug-in follows the host until somebody says otherwise",
+      DrawnQurveState().themePreference == .system)
+check("and Auto is not a third theme — it is the absence of a choice",
+      ThemePreference.system.theme(in: .dark) == MelGenTheme.dark
+      && ThemePreference.system.theme(in: .light) == MelGenTheme.light)
+check("while an explicit choice ignores the host in both directions",
+      ThemePreference.light.theme(in: .dark) == MelGenTheme.light
+      && ThemePreference.dark.theme(in: .light) == MelGenTheme.dark,
+      "an AUv3 lives inside somebody else's window and does not always "
+      + "inherit the scheme its author intended")
+check("the cycle returns to where it started",
+      ThemePreference.system.next.next.next == .system,
+      "Auto → Light → Dark → Auto")
+
+var themed = DrawnQurveState()
+themed.themePreference = .dark
+let themedRound = try! JSONDecoder().decode(
+    DrawnQurveState.self, from: JSONEncoder().encode(themed))
+check("and the choice survives a save", themedRound.themePreference == .dark)
 
 print("\n── the session ────────────────────────────────────")
 

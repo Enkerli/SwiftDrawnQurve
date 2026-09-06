@@ -60,7 +60,7 @@ package_flags() {
     echo "-Xcc -fmodule-map-file=$PKG_BIN/Kernel.build/module.modulemap"
     echo "-Xcc -I$PACKAGE/Sources/Kernel/include"
     echo "-cxx-interoperability-mode=default"
-    find "$PKG_BIN" -name "*.o" ! -path "*/UI.build/*" ! -path "*Tests.build/*" | sort
+    find "$PKG_BIN" -name "*.o" ! -path "*Tests.build/*" | sort
 }
 
 # Every extension source that does not need the AU shell: the session and what

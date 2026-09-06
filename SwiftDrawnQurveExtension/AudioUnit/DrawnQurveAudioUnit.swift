@@ -37,6 +37,41 @@ public final class DrawnQurveAudioUnit: PluginAudioUnit, @unchecked Sendable {
         areCurvesRunning = newState.isRunning
     }
 
+    /// Mirrors the host's Play parameter into the curve engine.
+    ///
+    /// The parameter and the session's `isRunning` are two names for one fact,
+    /// and they have to agree in both directions: a host pressing play must
+    /// start the lanes, and the on-screen button must move the host's
+    /// automation. `PluginAudioUnit` routes every parameter change into the
+    /// kernel, which is where the *sequence* path reads `playMelody` — this
+    /// plug-in commits no sequence, so nothing was reading it at all until now.
+    ///
+    /// Guarded against the loop it would otherwise make: setting the parameter
+    /// calls this, which sets the state, which would set the parameter.
+    private var isMirroring = false
+
+    /// The host's Play, arriving as a parameter change.
+    ///
+    /// The kernel reads `playMelody` inside `processMelody`, which this plug-in
+    /// never uses — so without this the parameter would exist, appear in every
+    /// host's automation lane, and do nothing at all. That is the exact bug the
+    /// empty tree on `main` was avoiding, and the reason declaring these three
+    /// only became honest once something read them.
+    public override func parameterDidChange(_ address: AUParameterAddress, _ value: AUValue) {
+        guard address == TransportParameter.play.rawValue else { return }
+        mirrorTransport(playing: value >= 0.5)
+    }
+
+    func mirrorTransport(playing: Bool) {
+        guard !isMirroring else { return }
+        isMirroring = true
+        defer { isMirroring = false }
+        var next = state
+        guard next.isRunning != playing else { return }
+        next.isRunning = playing
+        update(state: next)
+    }
+
     /// Where each lane's playhead is, for drawing them. Nil where a lane is not
     /// running, which is what lets the UI tell "at the start" from "stopped".
     var phases: [Double?] {

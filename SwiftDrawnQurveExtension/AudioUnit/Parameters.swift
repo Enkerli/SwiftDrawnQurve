@@ -22,20 +22,29 @@ import Foundation
 import Kernel
 import Shell
 
-// No transport parameters, for now, and the "for now" is the honest part.
+// The transport, and only the transport.
 //
-// This tree held `playMelody`, `playbackDirection` and `hostSync` until
-// 2026-09, inherited by being scaffolded from a plug-in that schedules notes.
-// The kernel acts on all three inside `processMelody`; this plug-in never
-// commits a sequence, so a host showed three automatable controls that did
-// nothing. A missing control is a gap; a control that lies is a bug.
+// This tree was empty on `main`, and the emptiness was honest rather than
+// lazy: it had held `playMelody`, `playbackDirection` and `hostSync` inherited
+// from a plug-in that schedules notes, and the kernel acts on all three inside
+// `processMelody` — which this plug-in never uses. Three automatable controls
+// that did nothing. A missing control is a gap; a control that lies is a bug.
 //
-// Run/stop is a UI button today and *should* be a parameter — a looping
-// gesture plug-in a host cannot start is a real limitation, and it is listed in
-// GAPS.md rather than papered over with a control that happens to compile.
+// What changed is that they are no longer lies. `playMelody` is mirrored into
+// the curve engine's run state by `DrawnQurveAudioUnit`, so a host pressing
+// play starts the lanes; `hostSync` and direction reach the kernel's curve path
+// the same way the sequence path already used them. This was the register's
+// most-wanted row: a looping gesture plug-in a host cannot start is a real
+// limitation, and every other plug-in in the suite wanted the same three
+// controls, which is why they are declared from `AUHost.TransportParameters`
+// rather than retyped here.
+//
+// Everything that is actually this plug-in's — which lane, what was drawn, the
+// quantization grid — stays session state. A host automating "which lane you
+// are drawing on" would be automating a gesture, and a gesture that changes
+// under the automation lane is not a gesture.
 let SwiftDrawnQurveParameterSpecs = ParameterTreeSpec {
-    ParameterGroupSpec(identifier: "global", name: "Global") {
-    }
+    TransportParameters.group(.loop)
 }
 
 extension ParameterSpec {

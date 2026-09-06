@@ -21,6 +21,7 @@ import Foundation
 import Carrier
 import Shell
 import Theory
+import UI
 
 struct DrawnQurveState: Codable, Hashable, Sendable {
 
@@ -31,6 +32,12 @@ struct DrawnQurveState: Codable, Hashable, Sendable {
     /// carries a line and, when the input reported it, a pressure companion.
     static let laneCount = 4
 
+    /// Light, dark, or whatever the host says.
+    ///
+    /// Session state rather than a parameter: a host automating the colour
+    /// scheme at bar 17 is not a musical decision anybody draws.
+    var themePreference: ThemePreference = .system
+
     var lanes: [CurveLane]
     /// Which lane the drawing surface is pointed at. Drawing replaces that
     /// lane's curve and nothing else.
@@ -39,7 +46,8 @@ struct DrawnQurveState: Codable, Hashable, Sendable {
     /// is a mute — "not now" and "not this one" are different questions.
     var isRunning: Bool = false
 
-    init(lanes: [CurveLane]? = nil, selectedLane: Int = 0, isRunning: Bool = false) {
+    init(lanes: [CurveLane]? = nil, selectedLane: Int = 0, isRunning: Bool = false,
+         themePreference: ThemePreference = .system) {
         // Lane 0 starts on CC 74 and enabled, so a first drawn curve makes a
         // sound without anything else being touched. The other three start
         // silent: four lanes all sending at once, on a plug-in nobody has
@@ -52,6 +60,7 @@ struct DrawnQurveState: Codable, Hashable, Sendable {
         }
         self.selectedLane = min(max(0, selectedLane), Self.laneCount - 1)
         self.isRunning = isRunning
+        self.themePreference = themePreference
     }
 
     init(from decoder: any Decoder) throws {
@@ -60,7 +69,9 @@ struct DrawnQurveState: Codable, Hashable, Sendable {
         while restored.count < Self.laneCount { restored.append(CurveLane()) }
         self.init(lanes: Array(restored.prefix(Self.laneCount)),
                   selectedLane: try c.decodeIfPresent(Int.self, forKey: .selectedLane) ?? 0,
-                  isRunning: try c.decodeIfPresent(Bool.self, forKey: .isRunning) ?? false)
+                  isRunning: try c.decodeIfPresent(Bool.self, forKey: .isRunning) ?? false,
+                  themePreference: try c.decodeIfPresent(ThemePreference.self,
+                                                         forKey: .themePreference) ?? .system)
     }
 
     // MARK: - The lane being drawn on

@@ -37,7 +37,12 @@ struct DrawnQurveMainView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private let clock = Timer.publish(every: 1.0 / 30, on: .main, in: .common).autoconnect()
-    private var theme: MelGenTheme { colorScheme == .dark ? .dark : .light }
+    /// The chosen theme, or the host's when nothing has been chosen.
+    ///
+    /// An AUv3 lives inside somebody else's window, and a host can present dark
+    /// chrome while handing the extension a light environment. The JUCE build
+    /// has this switch for exactly that reason.
+    private var theme: MelGenTheme { state.themePreference.theme(in: colorScheme) }
 
     var body: some View {
         ScrollView {
@@ -60,8 +65,61 @@ struct DrawnQurveMainView: View {
     // MARK: - Running
 
     private var transport: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            // The shared row, rather than this plug-in's own button.
+            //
+            // Play is an AU parameter now, so a host can start the loop — the
+            // register's most-wanted row, and a real limitation while it was
+            // missing: a looping gesture plug-in you have to start by hand every
+            // time is one you stop reaching for.
+            //
+            // The binding writes the parameter and the audio unit mirrors it
+            // back into the session, so the button and the automation lane are
+            // two views of one fact rather than two facts that drift.
+            TransportRow(isPlaying: playBinding,
+                         followsHost: hostSyncBinding,
+                         direction: directionBinding,
+                         theme: theme,
+                         caption: state.isRunning
+                             ? "\(state.lanes.filter(\.isEnabled).count) of "
+                               + "\(DrawnQurveState.laneCount) lanes running"
+                             : "")
+            HStack(spacing: MelGenMetrics.space2) {
+                ThemeChip(preference: Binding(get: { state.themePreference },
+                                              set: { state.themePreference = $0; commit() }),
+                          theme: theme)
+                Spacer(minLength: 0)
+                Button("Panic") { audioUnit?.panic() }
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(theme.warning)
+                    .frame(minHeight: MelGenMetrics.controlHeight)
+                    .accessibilityHint("Ends every note the lanes are holding, and "
+                                       + "sends all-notes-off on every channel")
+            }
+        }
+    }
+
+    // MARK: - The transport, bound to the host's parameters
+
+    private var transportBindings: TransportParameters.Bindings {
+        TransportParameters.Bindings(in: parameterTree)
+    }
+
+    private var playBinding: Binding<Bool> {
+        transportBindings.play ?? Binding(get: { state.isRunning },
+                                          set: { state.isRunning = $0; commit() })
+    }
+
+    private var hostSyncBinding: Binding<Bool> {
+        transportBindings.hostSync ?? .constant(false)
+    }
+
+    private var directionBinding: Binding<Int>? { transportBindings.direction }
+
+    private var clearButton: some View {
         HStack(spacing: MelGenMetrics.space2) {
             Button {
+
                 state.isRunning.toggle()
                 if !state.isRunning { phases = Array(repeating: nil, count: DrawnQurveState.laneCount) }
                 commit()
@@ -249,6 +307,69 @@ struct DrawnQurveMainView: View {
 
     // MARK: - What the selected lane sends
 
+    // MARK: - Qurve quantization
+
+    /// Two grids, and they are two instruments rather than one control with two
+    /// axes — which is why they are two rows with their own words rather than a
+    /// single "quantize" slider.
+    ///
+    /// **Steps** snaps the playhead to columns: a drawn ramp becomes a
+    /// staircase, a drawn wobble becomes a sequence. **Levels** snaps the value
+    /// to rows: a sweep becomes positions you can hear it move between.
+    ///
+    /// Both offer "off" as the first chip rather than as position zero of a
+    /// slider, because off is a different thing from a grid of one — a grid of
+    /// one would pin the lane to a single value, which is a mute wearing a
+    /// quantizer's name.
+    private var quantization: some View {
+        VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
+            HStack {
+                Text("Steps")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(theme.textSecondary)
+                    .frame(width: 48, alignment: .leading)
+                ChipPicker(options: Self.grids.map { ($0, $0 == 0 ? "off" : "\($0)") },
+                           selection: Binding(
+                               get: { state.lane.quantizeColumns },
+                               set: { state.lanes[state.selectedLane].quantizeColumns = $0
+                                      commit() }),
+                           theme: theme)
+            }
+            HStack {
+                Text("Levels")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(theme.textSecondary)
+                    .frame(width: 48, alignment: .leading)
+                ChipPicker(options: Self.grids.map { ($0, $0 == 0 ? "off" : "\($0)") },
+                           selection: Binding(
+                               get: { state.lane.quantizeLevels },
+                               set: { state.lanes[state.selectedLane].quantizeLevels = $0
+                                      commit() }),
+                           theme: theme)
+            }
+            Text(quantizationReading)
+                .font(.system(size: 10))
+                .foregroundStyle(theme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Powers of two and the odd ones that matter musically: 3 for triplets,
+    /// 6 and 12 for the two ways a bar of twelve divides.
+    private static let grids = [0, 2, 3, 4, 6, 8, 12, 16]
+
+    private var quantizationReading: String {
+        let columns = state.lane.quantizeColumns
+        let levels = state.lane.quantizeLevels
+        switch (columns > 1, levels > 1) {
+        case (false, false): return "Drawn exactly as drawn."
+        case (true, false): return "The playhead steps through \(columns) columns."
+        case (false, true): return "\(levels) values and nothing between them."
+        case (true, true):
+            return "\(columns) steps of \(levels) values — a sequence, not a gesture."
+        }
+    }
+
     private var laneSettings: some View {
         VStack(alignment: .leading, spacing: MelGenMetrics.space2) {
             HStack {
@@ -270,6 +391,8 @@ struct DrawnQurveMainView: View {
                                           set: { state.lanes[state.selectedLane].curve.message = $0
                                                  commit() }),
                        theme: theme)
+
+            quantization
 
             if state.lane.curve.message == .controlChange {
                 LabelledSlider(title: "Controller", lowLabel: "0", highLabel: "127",

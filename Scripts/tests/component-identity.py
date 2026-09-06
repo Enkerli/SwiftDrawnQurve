@@ -215,6 +215,16 @@ def main() -> None:
     # so "It is not the JUCE MIDIcurator." and "That one is `aumi Mcur`." are
     # one sentence on two lines — which the line-based version failed on next.
     disowned = re.compile(r"\bnot\b|\bJUCE\b|\bcollide|github\.com", re.IGNORECASE)
+    # The AU type comes from the plist, plus the other types the suite could
+    # plausibly mention, because this check hardcoded "aumi" until the synth
+    # arrived and then could not see `aumu Vayn` at all.
+    #
+    # Exactly one separator between the type and the code, too. The looser
+    # `[/ `]*` matched the prose "an `aumi` MIDI processor" and reported that the
+    # documents were claiming a sibling triple of `MIDI` — a check whose false
+    # positives are that easy to produce is one people learn to ignore.
+    types = "|".join(sorted({au_type, "aumi", "aumu", "aufx", "augn", "aumf"}))
+    quoted_code = re.compile(rf"(?:{types})[/ ]([A-Za-z0-9]{{4}})")
     docs = [REPO / "CLAUDE.md", REPO / "README.md"]
     named_own = []
     # Every code each document mentions, so a document that states the wrong
@@ -225,7 +235,7 @@ def main() -> None:
             continue
         text = doc.read_text(encoding="utf-8", errors="replace")
         for paragraph in re.split(r"\n\s*\n", text):
-            for found in re.findall(r"aumi[/ `]*([A-Za-z0-9]{4})", paragraph):
+            for found in quoted_code.findall(paragraph):
                 seen.setdefault(doc.name, set()).add(found)
                 if found == subtype:
                     named_own.append(doc.name)
